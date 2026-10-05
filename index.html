@@ -16,7 +16,7 @@
     max-width: calc(100vw - 24px); box-sizing: border-box;
     display: flex; align-items: center; padding: 6px 10px;
     font-family: "neue-haas-grotesk-display", sans-serif;
-    font-weight: 400; font-style: normal; font-size: clamp(13px, 0.5vw + 10px, 15px); line-height: 1; letter-spacing: 0.01em;
+    font-weight: 400; font-style: normal; font-size: clamp(13px, 0.5vw + 10px, 15px); line-height: 1; letter-spacing: 0.07em;
     text-transform: lowercase;
     user-select: none; -webkit-user-select: none;
     isolation: isolate;
@@ -24,41 +24,44 @@
   .controls .group { display: flex; align-items: center; }
   .controls .group + .group { margin-left: -10px; }
   .controls button {
-    --tilt: 0deg; --dy: 0px; --bg: rgba(29, 85, 150, 0.78);
+    --tilt: 0deg; --dy: 0px; --bg: rgba(29, 85, 150, 0.78); --x: 0px; --y: 0px;
     position: relative; z-index: 1;
     font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--ink);
     cursor: pointer; white-space: nowrap;
-    padding: 13px 24px 12px 30px; margin: 0 0 0 -12px; border: 0; border-radius: 0;
+    padding: 8px 19px 7px 21px; margin: 0 0 0 -10px; touch-action: none; border: 0; border-radius: 0;
     background: var(--bg); mix-blend-mode: multiply;
     -webkit-tap-highlight-color: transparent;
-    transform: translateY(var(--dy)) rotate(var(--tilt));
+    transform: translate(var(--x), var(--y)) translateY(var(--dy)) rotate(var(--tilt));
     transition: transform .4s cubic-bezier(.34, 1.6, .5, 1), background .2s;
   }
-  .controls .group:first-child button:first-child { margin-left: 0; padding-left: 24px; }
+  .controls .group:first-child button:first-child { margin-left: 0; padding-left: 14px; }
   .controls button:nth-of-type(1) { --tilt: -2.2deg; --dy: 2px; }
   .controls button:nth-of-type(2) { --tilt: 1.6deg; --dy: -3px; --bg: rgba(46, 108, 178, 0.72); }
   .controls .tools button:nth-of-type(1) { --tilt: -1deg; --dy: 4px; --bg: rgba(22, 68, 121, 0.62); }
   .controls .tools button:nth-of-type(2) { --tilt: 2.4deg; --dy: -1px; --bg: rgba(52, 116, 190, 0.66); }
   .controls .tools button:nth-of-type(3) { --tilt: -1.8deg; --dy: 3px; --bg: rgba(29, 85, 150, 0.7); }
-  .controls button:hover { z-index: 3; transform: translateY(calc(var(--dy) - 5px)) rotate(calc(var(--tilt) * -0.4)); }
-  .controls button:active { transform: translateY(var(--dy)) rotate(0deg) scale(.95); transition-duration: .08s; }
+  .controls button:hover { z-index: 3; transform: translate(var(--x), var(--y)) translateY(calc(var(--dy) - 4px)) rotate(calc(var(--tilt) * -0.4)); }
+  .controls button.moved { z-index: 2; }
+  .controls button.dragging { z-index: 4; cursor: grabbing; transition: background .2s;
+    transform: translate(var(--x), var(--y)) translateY(calc(var(--dy) - 4px)) rotate(calc(var(--tilt) * -0.6)) scale(1.06); }
+  .controls button.pressed { transform: translate(var(--x), var(--y)) translateY(var(--dy)) rotate(0deg) scale(.95); transition-duration: .08s; }
   .controls button:focus-visible { outline: 1.5px dashed var(--ink); outline-offset: -6px; }
   .controls.busy button:not(.on) { opacity: .35; pointer-events: none; }
   .controls.busy button.on { z-index: 3; pointer-events: none; animation: flutter .5s ease-in-out infinite alternate; }
-  @keyframes flutter { from { transform: translateY(calc(var(--dy) - 4px)) rotate(-2deg); } to { transform: translateY(calc(var(--dy) - 6px)) rotate(2deg); } }
+  @keyframes flutter { from { transform: translate(var(--x), var(--y)) translateY(calc(var(--dy) - 4px)) rotate(-2deg); } to { transform: translate(var(--x), var(--y)) translateY(calc(var(--dy) - 6px)) rotate(2deg); } }
 
   /* phones: two loose rows of slips */
   @media (max-width: 600px) {
     .controls { flex-direction: column; padding: 4px 6px; }
     .controls .group + .group { margin: -6px 0 0 0; }
     .controls .group { justify-content: center; }
-    .controls button { padding: 12px 16px 11px 22px; }
-    .controls .group button:first-child { padding-left: 16px; }
+    .controls button { padding: 8px 15px 7px 18px; }
+    .controls .group button:first-child { padding-left: 11px; }
     .controls .tools button:first-child { margin-left: 0; }
   }
-  @media (max-width: 360px) { .controls button { padding: 11px 11px 10px 17px; margin-left: -9px; } }
+  @media (max-width: 360px) { .controls button { padding: 7px 12px 6px 15px; margin-left: -8px; letter-spacing: 0.04em; } }
   /* short landscape screens */
-  @media (max-height: 420px) { .controls { bottom: max(8px, env(safe-area-inset-bottom)); } .controls button { padding: 10px 18px 9px; } }
+  @media (max-height: 420px) { .controls { bottom: max(8px, env(safe-area-inset-bottom)); } .controls button { padding: 6px 12px 5px 18px; } }
 </style>
 </head>
 <body>
@@ -548,12 +551,48 @@ const GLIDE          = 6;    // how quickly a released strip stops sliding (lowe
     await sleep(spread + 60);
     running = false; controlsEl.classList.remove('busy'); wake();
   }
-  controlsEl.addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b || running) return;
+  // every slip can be picked up and moved around; a tap (no drag) presses it
+  function press(b) {
+    if (running) return;
     b.classList.add('on');
     const watch = setInterval(() => { if (!running) { b.classList.remove('on'); clearInterval(watch); } }, 120);
+    if (b.dataset.act === 'reset') for (const s of controlsEl.querySelectorAll('button')) { s.style.removeProperty('--x'); s.style.removeProperty('--y'); s.classList.remove('moved'); }
     if (b.dataset.act === 'flip') flipAll(); else autoWeave(b.dataset.act);
+  }
+  controlsEl.addEventListener('click', (e) => {          // keyboard (Enter / Space) still works
+    const b = e.target.closest('button'); if (b && e.detail === 0) press(b);
   });
+  for (const b of controlsEl.querySelectorAll('button')) {
+    let start = null;
+    b.addEventListener('pointerdown', (e) => {
+      if (running) return;
+      e.preventDefault();
+      b.setPointerCapture(e.pointerId);
+      const cs = getComputedStyle(b);
+      start = { px: e.clientX, py: e.clientY, x: parseFloat(cs.getPropertyValue('--x')) || 0, y: parseFloat(cs.getPropertyValue('--y')) || 0, moved: false, r: b.getBoundingClientRect() };
+      b.classList.add('pressed');
+    });
+    b.addEventListener('pointermove', (e) => {
+      if (!start) return;
+      let dx = e.clientX - start.px, dy = e.clientY - start.py;
+      if (!start.moved && Math.hypot(dx, dy) < 5) return;
+      if (!start.moved) { start.moved = true; b.classList.remove('pressed'); b.classList.add('dragging', 'moved'); }
+      // keep the slip on screen
+      dx = Math.min(innerWidth - 8 - start.r.right, Math.max(8 - start.r.left, dx));
+      dy = Math.min(innerHeight - 8 - start.r.bottom, Math.max(8 - start.r.top, dy));
+      b.style.setProperty('--x', start.x + dx + 'px');
+      b.style.setProperty('--y', start.y + dy + 'px');
+    });
+    const end = (e) => {
+      if (!start) return;
+      const tapped = !start.moved && e.type === 'pointerup';
+      start = null;
+      b.classList.remove('pressed', 'dragging');
+      if (tapped) press(b);
+    };
+    b.addEventListener('pointerup', end);
+    b.addEventListener('pointercancel', end);
+  }
 
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 150));
